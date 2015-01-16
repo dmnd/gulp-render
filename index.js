@@ -68,21 +68,35 @@ function Plugin(options) {
     options.template = fs.readFileSync(options.template, {encoding: 'utf8'});
   }
 
+  var transform = function(src, filename) {
+    src = appendJsxPragma(filename, src);
+    return ReactTools.transform(src, reactOptions);
+  };
+  if (options.transform) {
+    transform = options.transform;
+  }
+
+  var shouldTransform = function(filename) {
+    return filename.indexOf('node_modules') === -1;
+  };
+  if (options.shouldTransform) {
+    shouldTransform = options.shouldTransform;
+  }
+
   var originalJsTransform = require.extensions['.js'];
 
-  var reactTransform = function(module, filename) {
-    if (filename.indexOf('node_modules') === -1) {
+  var moduleTransform = function(module, filename) {
+    if (shouldTransform(filename)) {
       var src = fs.readFileSync(filename, {encoding: 'utf8'});
-      src = appendJsxPragma(filename, src);
-      src = ReactTools.transform(src, reactOptions);
+      src = transform(src, filename);
       module._compile(src, filename);
     } else {
       originalJsTransform(module, filename);
     }
   };
 
-  require.extensions['.js'] = reactTransform;
-  require.extensions['.jsx'] = reactTransform;
+  require.extensions['.js'] = moduleTransform;
+  require.extensions['.jsx'] = moduleTransform;
 
   // Creates a stream through which each file will pass
   var stream = through.obj(function(file, enc, cb) {
@@ -98,8 +112,7 @@ function Plugin(options) {
 
         try {
           var contents = file.contents.toString('utf8');
-          contents = appendJsxPragma(file.path, contents);
-          contents = ReactTools.transform(contents, reactOptions);
+          contents = transform(contents, file.path);
           var m = new Module();
           m.id = file.path;
           m.filename = file.path;
